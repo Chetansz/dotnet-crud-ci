@@ -3,7 +3,10 @@ WORKDIR /src
 COPY . .
 # Debug: List files to verify .csproj presence
 RUN ls -l
-RUN dotnet restore "./DotnetCrudApi.csproj"
+# Debug: Verify .NET SDK version
+RUN dotnet --version
+# Attempt to restore
+RUN dotnet restore "./DotnetCrudApi.csproj" --verbosity detailed
 RUN dotnet publish "./DotnetCrudApi.csproj" -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
