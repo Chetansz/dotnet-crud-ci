@@ -1,38 +1,85 @@
 name: Full CI Pipeline
 
-on: [push, pull_request]
+on: [push job is running.
+
+### Solution
+You need to install `docker-compose` explicitly in your workflow before using, pull_request]
 
 jobs:
   ci-pipeline:
-    runs-on: ubuntu-latest
+    runs-on: it. Here's an updated version of your workflow with ubuntu-latest
 
     services:
       docker:
-        image: docker:stable
+        image the fix:
+
+```yaml
+name: Full CI Pipeline
+
+on: docker:stable
 
     steps:
-      - name: Checkout code
+      - name: Checkout code: [push, pull_request]
+
+jobs:
+  ci-pipeline:
+    runs-on:
         uses: actions/checkout@v3
 
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v2
+      - name: ubuntu-latest
 
-      - name: Build and run all services
+    services:
+      docker:
+        image Set up Docker
+        uses: docker/setup-buildx-action@: docker:stable
+
+    steps:
+      - name: Checkout codev2
+
+      - name: Install Docker Compose
         run: |
-          docker-compose up -d
+          sudo apt-get update
+          sudo apt-get install
+        uses: actions/checkout@v3
+
+      - name: -y docker-compose
+
+      - name: Build and Set up Docker
+        uses: docker/setup-buildx-action@ run all services
+        run: |
+          docker-composev2
+
+      - name: Install Docker Compose
+        run: up -d
           sleep 15
 
-      - name: Run SonarQube Scanner (SAST)
-        run: |
-          docker exec $(docker ps -qf "ancestor=sonarqube") echo "SonarQube Running"
-          # In real case: Use sonar-scanner CLI or npm scanner here
+      - name: Run Son |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
 
-      - name: Run ZAP scan (DAST)
+     arQube Scanner (SAST)
+        run: - name: Build and |
+          docker run all services
         run: |
-          docker run --network="host" owasp/zap2docker-stable zap-baseline.py -t http://localhost:3000
+          docker-compose exec $(docker ps -qf "ancestor=sonarqube") up -d
+          sleep 15
 
-      - name: Install Cypress dependencies
+      - name: Run echo "SonarQube Running"
+          # In real case SonarQube Scanner (SAST)
+        run: |
+         : Use sonar-scanner CLI or npm scanner here
+
+      docker exec $(docker ps -qf "ancestor=sonarqube") - name: Run ZAP scan (DAST)
+        run: |
+          echo "SonarQube Running"
+          # In real case docker run --network="host" owasp/zap2docker-stable zap: Use sonar-scanner CLI or npm scanner here
+
+     -baseline.py -t http://localhost:3000
+
+      - - name: Run ZAP scan (DAST)
+        run: |
+          name: Install Cypress dependencies
         run: npm install
 
       - name: Run Cypress tests (Functional)
-        run: npx cypress run
+ docker run --network="host" owasp/zap2docker-stable        run: npx cypress run
