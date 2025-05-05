@@ -1,17 +1,9 @@
-version: '3.4'
+version: '3.8'
 
 services:
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "5000:80"
-
-  sonarqube:
-    image: sonarqube:latest
-    ports:
-      - "9000:9000"
-
-  zap:
-    image: owasp/zap2docker-stable
-    ports:
-      - "8080:8080"
