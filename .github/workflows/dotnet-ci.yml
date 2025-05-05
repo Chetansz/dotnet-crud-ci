@@ -6,11 +6,6 @@ jobs:
   ci-pipeline:
     runs-on: ubuntu-latest
 
-    services:
-      docker:
-        image: docker:stable
-        options: --privileged
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -26,23 +21,19 @@ jobs:
       - name: Start Docker services
         run: |
           docker-compose up -d
-          sleep 15  # Wait for services to be ready
+          sleep 15
 
       - name: Run SonarQube Scanner (SAST)
         run: |
           echo "Running SonarQube scan"
-          # Example: sonar-scanner or another scanner command should be here
-          # sonar-scanner -Dsonar.projectKey=your_project -Dsonar.sources=. -Dsonar.host.url=http://localhost:9000 -Dsonar.login=your_token
+          # sonar-scanner ...
 
       - name: Run ZAP scan (DAST)
         run: |
-          echo "Running ZAP scan"
-          docker run --network="host" owasp/zap2docker-stable zap-baseline.py -t http://localhost:3000
+          docker run --network="host" owasp/zap2docker-stable zap-baseline.py -t http://localhost:5000
 
       - name: Install Cypress dependencies
-        run: |
-          npm install
+        run: npm install
 
-      - name: Run Cypress tests (Functional)
-        run: |
-          npx cypress run
+      - name: Run Cypress tests
+        run: npx cypress run
