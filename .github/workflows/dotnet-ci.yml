@@ -10,6 +10,7 @@ permissions:
   contents: read
   packages: read
   actions: read
+  security-events: write
 
 jobs:
   security-testing:
@@ -38,10 +39,11 @@ jobs:
         with:
           dotnet-version: '7.0.x'
           
-      - name: Install SonarScanner
+      - name: Install SonarScanner and tools
         run: |
           dotnet tool install --global dotnet-sonarscanner
-          dotnet tool install --global dotnet-coverage
+          dotnet add package coverlet.msbuild
+          dotnet add package coverlet.collector
           
       - name: Cache SonarQube packages
         uses: actions/cache@v4
@@ -63,10 +65,10 @@ jobs:
             /k:"dotnet-crud-api" \
             /d:sonar.host.url="http://localhost:9000" \
             /d:sonar.login="${{ secrets.SONAR_TOKEN }}" \
-            /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
+            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
           
           dotnet build --no-restore
-          dotnet-coverage collect 'dotnet test' -f xml -o 'coverage.xml'
+          dotnet test --no-build --collect:"XPlat Code Coverage;Format=opencover"
           
           dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
           
@@ -126,6 +128,7 @@ jobs:
             zap-reports/
             newman-reports/
             .sonarqube/
+            **/coverage.opencover.xml
           retention-days: 5
             
       # Stop .NET application
