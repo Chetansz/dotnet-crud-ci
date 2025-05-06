@@ -1,84 +1,47 @@
-name: Full CI Pipeline
+name: Build
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+
 
 jobs:
-  ci-pipeline:
-    runs-on: ubuntu-latest
-
+  build:
+    name: Build and analyze
+    runs-on: windows-latest
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v4
         with:
-          dotnet-version: '8.0.x'
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Verify Docker Compose
+          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: 'zulu' # Alternative distribution options are available.
+      - name: Cache SonarQube packages
+        uses: actions/cache@v4
+        with:
+          path: ~\.sonar\cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+      - name: Cache SonarQube scanner
+        id: cache-sonar-scanner
+        uses: actions/cache@v4
+        with:
+          path: .\.sonar\scanner
+          key: ${{ runner.os }}-sonar-scanner
+          restore-keys: ${{ runner.os }}-sonar-scanner
+      - name: Install SonarQube scanner
+        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+        shell: powershell
         run: |
-          docker compose version
-          if [ $? -ne 0 ]; then
-            echo "Docker Compose not found. Exiting."
-            exit 1
-          fi
-
-      - name: Start Docker services
+          New-Item -Path .\.sonar\scanner -ItemType Directory
+          dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
+      - name: Build and analyze
+        shell: powershell
         run: |
-          docker compose build --no-cache
-          docker compose up -d
-          echo "Waiting for API to be healthy..."
-          for i in {1..10}; do
-            if curl -s http://localhost:8080; then
-              echo "API is up!"
-              break
-            else
-              echo "Waiting for API..."
-              sleep 5
-            fi
-          done
-
-      - name: Run SonarQube Scanner (SAST)
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: |
-          dotnet tool install --global dotnet-sonarscanner
-          dotnet sonarscanner begin \
-            /k:"dotnet-crud-api" \
-            /d:sonar.host.url="$SONAR_HOST_URL" \
-            /d:sonar.token="$SONAR_TOKEN" \
-            /d:sonar.cs.opencover.reportsPaths="coverage.xml"
+          .\.sonar\scanner\dotnet-sonarscanner begin /k:"dotnet-crud-api" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="${{ secrets.SONAR_HOST_URL }}"
           dotnet build
-          dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
-
-      - name: Run ZAP Scan (DAST)
-        run: |
-          NETWORK=$(docker network ls --filter "name=dotnetcrudapi" -q | head -n 1)
-          if [ -z "$NETWORK" ]; then
-            NETWORK=$(docker network ls --filter "name=default" -q | head -n 1)
-          fi
-          docker run --rm -v $(pwd):/zap/wrk/:rw --network "$NETWORK" zaproxy/zap-stable zap-baseline.py -t http://api:8080 -r zap-report.html
-          mv zap-report.html zap-report-${{ github.run_id }}.html
-          echo "ZAP report generated: zap-report-${{ github.run_id }}.html"
-
-      - name: Run xUnit Tests (Functional)
-        run: |
-          dotnet test --no-build --verbosity normal
-
-      - name: Archive Artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-reports
-          path: |
-            zap-report-*.html
-            coverage.xml
-
-      - name: Stop Docker services
-        if: always()
-        run: |
-          docker compose down
+          .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
