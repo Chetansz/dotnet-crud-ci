@@ -30,7 +30,7 @@ jobs:
 
       - name: Run ZAP scan (DAST)
         run: |
-          docker run --rm -v $(pwd):/zap/wrk/:rw ghcr.io/zaproxy/zap-baseline:stable -t http://host.docker.internal:5000
+          docker run --rm -v $(pwd):/zap/wrk/:rw owasp/zap2docker-stable zap-baseline.py -t http://host.docker.internal:5000
       - name: Install Cypress dependencies
         run: npm install
 
