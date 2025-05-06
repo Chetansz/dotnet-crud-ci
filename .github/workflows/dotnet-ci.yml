@@ -1,47 +1,142 @@
-name: Build
+name: Spring Boot Security Pipeline
 
 on:
   push:
-    branches:
-      - main
-
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build:
-    name: Build and analyze
-    runs-on: windows-latest
+  security-testing:
+    runs-on: ubuntu-latest
+    
+    services:
+      # SonarQube service container
+      sonarqube:
+        image: sonarqube:latest
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd="curl -f http://localhost:9000/api/system/status"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+          fetch-depth: 0  # Required for SonarQube analysis
+          
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
-          java-version: 17
-          distribution: 'zulu' # Alternative distribution options are available.
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'maven'
+          
       - name: Cache SonarQube packages
-        uses: actions/cache@v4
+        uses: actions/cache@v3
         with:
-          path: ~\.sonar\cache
+          path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
-      - name: Cache SonarQube scanner
-        id: cache-sonar-scanner
-        uses: actions/cache@v4
+          
+      - name: Cache Maven packages
+        uses: actions/cache@v3
         with:
-          path: .\.sonar\scanner
-          key: ${{ runner.os }}-sonar-scanner
-          restore-keys: ${{ runner.os }}-sonar-scanner
-      - name: Install SonarQube scanner
-        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
-        shell: powershell
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+          
+      # Build and run SAST with SonarQube
+      - name: Build and analyze with SonarQube
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          New-Item -Path .\.sonar\scanner -ItemType Directory
-          dotnet tool update dotnet-sonarscanner --tool-path .\.sonar\scanner
-      - name: Build and analyze
-        shell: powershell
+          mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
+          -Dsonar.projectKey=spring-boot-app \
+          -Dsonar.host.url=http://localhost:9000 \
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
+          -Dsonar.java.binaries=target/classes \
+          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
+          -Dsonar.junit.reportPaths=target/surefire-reports
+          
+      # Start Spring Boot application
+      - name: Start Spring Boot Application
         run: |
-          .\.sonar\scanner\dotnet-sonarscanner begin /k:"dotnet-crud-api" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="${{ secrets.SONAR_HOST_URL }}"
-          dotnet build
-          .\.sonar\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+          nohup mvn spring-boot:run &
+          echo "Waiting for application to start..."
+          timeout 60 bash -c 'until curl -s http://localhost:8080/actuator/health; do sleep 5; done'
+          
+      # Run OWASP ZAP scan
+      - name: ZAP Scan
+        run: |
+          mkdir -p zap-reports
+          docker run --network host \
+            -v $(pwd)/zap-reports:/zap/wrk/:rw \
+            --user root \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:8080 \
+            -g gen.conf \
+            -r zap-report.html \
+            -I
+            
+      # Install and run Newman for Postman tests
+      - name: Install Newman
+        run: |
+          npm install -g newman
+          npm install -g newman-reporter-htmlextra
+          
+      - name: Run Postman Collection
+        run: |
+          mkdir -p newman-reports
+          newman run ./postman/postman_collection.json \
+            --reporters cli,htmlextra \
+            --reporter-htmlextra-export newman-reports/report.html
+            
+      # Generate consolidated report
+      - name: Generate Consolidated Report
+        run: |
+          mkdir -p test-reports
+          echo "# Security and Testing Report" > test-reports/consolidated-report.md
+          echo "## SAST Results" >> test-reports/consolidated-report.md
+          cat target/sonar/report-task.txt >> test-reports/consolidated-report.md
+          echo "## DAST Results" >> test-reports/consolidated-report.md
+          cat zap-reports/zap-report.html >> test-reports/consolidated-report.md
+          echo "## Functional Test Results" >> test-reports/consolidated-report.md
+          cat newman-reports/report.html >> test-reports/consolidated-report.md
+          
+      # Upload test reports as artifacts
+      - name: Upload Test Reports
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-test-reports
+          path: |
+            test-reports/
+            zap-reports/
+            newman-reports/
+            target/sonar/
+            
+      # Stop Spring Boot application
+      - name: Stop Spring Boot Application
+        if: always()
+        run: |
+          pkill -f 'spring-boot:run' || true
+          
+      # Check for vulnerabilities and fail if found
+      - name: Check for Vulnerabilities
+        run: |
+          if grep -q "High" zap-reports/zap-report.html; then
+            echo "High severity vulnerabilities found in ZAP scan"
+            exit 1
+          fi
+          if [ -f target/sonar/report-task.txt ]; then
+            SONAR_CE_TASK=$(cat target/sonar/report-task.txt | grep "ceTaskId" | cut -d'=' -f2)
+            if [ ! -z "$SONAR_CE_TASK" ]; then
+              echo "SonarQube analysis completed with task ID: $SONAR_CE_TASK"
+              # Add your quality gate checks here
+            fi
+          fi
