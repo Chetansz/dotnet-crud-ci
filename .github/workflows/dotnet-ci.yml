@@ -13,12 +13,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Create Docker network
-        run: docker network create full-ci-network
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
 
       - name: Start Docker services
         run: |
-          docker compose --file docker-compose.yml --project-name full-ci-network up -d
+          docker-compose up -d
           echo "Waiting for services to be healthy..."
           for i in {1..10}; do
             if curl -s http://localhost:5000/health; then
@@ -37,16 +39,18 @@ jobs:
 
       - name: Run ZAP scan (DAST)
         run: |
+          # Ensure the working directory has write permissions
           chmod -R 777 $(pwd)
-          docker run --rm -v $(pwd):/zap/wrk/:rw \
-            --user root \
-            --network full-ci-network \
-            zaproxy/zap-stable zap-baseline.py -t http://api:5000
+          # Get the Docker network used by docker-compose
+          NETWORK=$(docker network ls --filter "name=full-ci-pipeline" -q)
+          if [ -z "$NETWORK" ]; then
+            NETWORK=$(docker network ls --filter "name=default" -q | head -n 1)
+          fi
+          # Run ZAP on the same network, using the service name 'api'
+          docker run --rm -v $(pwd):/zap/wrk/:rw --user root --network $NETWORK zaproxy/zap-stable zap-baseline.py -t http://api:5000
 
       - name: Install Cypress dependencies
-        run: |
-          npm install
-          npx wait-on http://localhost:5000/health
+        run: npm install
 
       - name: Run Cypress tests
         run: npx cypress run
