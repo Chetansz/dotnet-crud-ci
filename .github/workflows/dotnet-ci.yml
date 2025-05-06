@@ -18,12 +18,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Install Docker Compose
+      - name: Verify Docker Compose
         run: |
-          # Ensure Docker Compose v2 is available
-          docker compose version || sudo apt-get update && sudo apt-get install -y docker-compose-plugin
-          # Verify installation
+          # Verify Docker Compose v2 is available
           docker compose version
+          if [ $? -ne 0 ]; then
+            echo "Docker Compose not found. Exiting."
+            exit 1
+          fi
 
       - name: Start Docker services
         run: |
@@ -55,6 +57,7 @@ jobs:
 
       - name: Run ZAP Scan (DAST)
         run: |
+          # Get the Docker network (based on project directory)
           NETWORK=$(docker network ls --filter "name=dotnetcrudapi" -q | head -n 1)
           if [ -z "$NETWORK" ]; then
             NETWORK=$(docker network ls --filter "name=default" -q | head -n 1)
