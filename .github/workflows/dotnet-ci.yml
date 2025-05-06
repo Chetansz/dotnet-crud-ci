@@ -39,7 +39,10 @@ jobs:
 
       - name: Run ZAP scan (DAST)
         run: |
-          docker run --rm -v $(pwd):/zap/wrk/:rw zaproxy/zap-stable zap-baseline.py -t http://host.docker.internal:5000
+          # Ensure the working directory has write permissions for the ZAP container
+          chmod -R 777 $(pwd)
+          # Run ZAP as root and use localhost instead of host.docker.internal
+          docker run --rm -v $(pwd):/zap/wrk/:rw --user root zaproxy/zap-stable zap-baseline.py -t http://localhost:5000
 
       - name: Install Cypress dependencies
         run: npm install
