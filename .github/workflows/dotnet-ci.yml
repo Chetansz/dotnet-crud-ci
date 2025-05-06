@@ -8,19 +8,26 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4 # Updated to latest version
+        uses: actions/checkout@v4
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x' # Matches your project
+          dotnet-version: '8.0.x'
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3 # Updated to latest version
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Docker Compose
+        run: |
+          # Ensure Docker Compose v2 is available
+          docker compose version || sudo apt-get update && sudo apt-get install -y docker-compose-plugin
+          # Verify installation
+          docker compose version
 
       - name: Start Docker services
         run: |
-          docker-compose up -d
+          docker compose up -d
           echo "Waiting for API to be healthy..."
           for i in {1..10}; do
             if curl -s http://localhost:8080; then
@@ -34,8 +41,8 @@ jobs:
 
       - name: Run SonarQube Scanner (SAST)
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} # Store token in GitHub Secrets
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # e.g., http://localhost:9000
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           dotnet tool install --global dotnet-sonarscanner
           dotnet sonarscanner begin \
@@ -48,14 +55,11 @@ jobs:
 
       - name: Run ZAP Scan (DAST)
         run: |
-          # Get the Docker network created by docker-compose (project name is directory-based)
           NETWORK=$(docker network ls --filter "name=dotnetcrudapi" -q | head -n 1)
           if [ -z "$NETWORK" ]; then
             NETWORK=$(docker network ls --filter "name=default" -q | head -n 1)
           fi
-          # Run ZAP on the same network, using the service name 'api' and correct port
           docker run --rm -v $(pwd):/zap/wrk/:rw --network "$NETWORK" zaproxy/zap-stable zap-baseline.py -t http://api:8080 -r zap-report.html
-          # Archive ZAP report
           mv zap-report.html zap-report-${{ github.run_id }}.html
           echo "ZAP report generated: zap-report-${{ github.run_id }}.html"
 
@@ -75,4 +79,4 @@ jobs:
       - name: Stop Docker services
         if: always()
         run: |
-          docker-compose down
+          docker compose down
