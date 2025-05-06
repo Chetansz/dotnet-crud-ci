@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  packages: read
+  actions: read
+
 jobs:
   security-testing:
     runs-on: ubuntu-latest
@@ -24,26 +29,26 @@ jobs:
     
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for SonarQube analysis
           
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
           cache: 'maven'
           
       - name: Cache SonarQube packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
           
       - name: Cache Maven packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -110,8 +115,8 @@ jobs:
           
       # Upload test reports as artifacts
       - name: Upload Test Reports
-        uses: actions/upload-artifact@v3
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: security-test-reports
           path: |
@@ -119,6 +124,7 @@ jobs:
             zap-reports/
             newman-reports/
             target/sonar/
+          retention-days: 5
             
       # Stop Spring Boot application
       - name: Stop Spring Boot Application
