@@ -1,4 +1,4 @@
-name: Spring Boot Security Pipeline
+name: .NET Security Pipeline
 
 on:
   push:
@@ -33,12 +33,15 @@ jobs:
         with:
           fetch-depth: 0  # Required for SonarQube analysis
           
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
+          dotnet-version: '7.0.x'
+          
+      - name: Install SonarScanner
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+          dotnet tool install --global dotnet-coverage
           
       - name: Cache SonarQube packages
         uses: actions/cache@v4
@@ -47,12 +50,8 @@ jobs:
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
           
-      - name: Cache Maven packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+      - name: Restore dependencies
+        run: dotnet restore
           
       # Build and run SAST with SonarQube
       - name: Build and analyze with SonarQube
@@ -60,20 +59,23 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-          -Dsonar.projectKey=spring-boot-app \
-          -Dsonar.host.url=http://localhost:9000 \
-          -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
-          -Dsonar.java.binaries=target/classes \
-          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml \
-          -Dsonar.junit.reportPaths=target/surefire-reports
+          dotnet sonarscanner begin \
+            /k:"dotnet-crud-api" \
+            /d:sonar.host.url="http://localhost:9000" \
+            /d:sonar.login="${{ secrets.SONAR_TOKEN }}" \
+            /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml
           
-      # Start Spring Boot application
-      - name: Start Spring Boot Application
+          dotnet build --no-restore
+          dotnet-coverage collect 'dotnet test' -f xml -o 'coverage.xml'
+          
+          dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+          
+      # Start .NET application
+      - name: Start .NET Application
         run: |
-          nohup mvn spring-boot:run &
+          dotnet run --project DotnetCrudApi.csproj &
           echo "Waiting for application to start..."
-          timeout 60 bash -c 'until curl -s http://localhost:8080/actuator/health; do sleep 5; done'
+          timeout 60 bash -c 'until curl -s http://localhost:5047/swagger/index.html; do sleep 5; done'
           
       # Run OWASP ZAP scan
       - name: ZAP Scan
@@ -83,7 +85,7 @@ jobs:
             -v $(pwd)/zap-reports:/zap/wrk/:rw \
             --user root \
             ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://localhost:8080 \
+            zap-baseline.py -t http://localhost:5047 \
             -g gen.conf \
             -r zap-report.html \
             -I
@@ -97,7 +99,7 @@ jobs:
       - name: Run Postman Collection
         run: |
           mkdir -p newman-reports
-          newman run ./postman/postman_collection.json \
+          newman run ./Tests/Postman/TodoApi.postman_collection.json \
             --reporters cli,htmlextra \
             --reporter-htmlextra-export newman-reports/report.html
             
@@ -107,11 +109,11 @@ jobs:
           mkdir -p test-reports
           echo "# Security and Testing Report" > test-reports/consolidated-report.md
           echo "## SAST Results" >> test-reports/consolidated-report.md
-          cat target/sonar/report-task.txt >> test-reports/consolidated-report.md
+          cat .sonarqube/out/*/Issues.json >> test-reports/consolidated-report.md || true
           echo "## DAST Results" >> test-reports/consolidated-report.md
-          cat zap-reports/zap-report.html >> test-reports/consolidated-report.md
+          cat zap-reports/zap-report.html >> test-reports/consolidated-report.md || true
           echo "## Functional Test Results" >> test-reports/consolidated-report.md
-          cat newman-reports/report.html >> test-reports/consolidated-report.md
+          cat newman-reports/report.html >> test-reports/consolidated-report.md || true
           
       # Upload test reports as artifacts
       - name: Upload Test Reports
@@ -123,14 +125,14 @@ jobs:
             test-reports/
             zap-reports/
             newman-reports/
-            target/sonar/
+            .sonarqube/
           retention-days: 5
             
-      # Stop Spring Boot application
-      - name: Stop Spring Boot Application
+      # Stop .NET application
+      - name: Stop .NET Application
         if: always()
         run: |
-          pkill -f 'spring-boot:run' || true
+          pkill -f 'dotnet run' || true
           
       # Check for vulnerabilities and fail if found
       - name: Check for Vulnerabilities
@@ -139,10 +141,9 @@ jobs:
             echo "High severity vulnerabilities found in ZAP scan"
             exit 1
           fi
-          if [ -f target/sonar/report-task.txt ]; then
-            SONAR_CE_TASK=$(cat target/sonar/report-task.txt | grep "ceTaskId" | cut -d'=' -f2)
-            if [ ! -z "$SONAR_CE_TASK" ]; then
-              echo "SonarQube analysis completed with task ID: $SONAR_CE_TASK"
-              # Add your quality gate checks here
+          if [ -f .sonarqube/out/*/Issues.json ]; then
+            if grep -q '"severity":"CRITICAL"' .sonarqube/out/*/Issues.json; then
+              echo "Critical issues found in SonarQube analysis"
+              exit 1
             fi
           fi
