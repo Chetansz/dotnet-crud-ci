@@ -21,7 +21,16 @@ jobs:
       - name: Start Docker services
         run: |
           docker-compose up -d
-          sleep 15
+          echo "Waiting for services to be healthy..."
+          for i in {1..10}; do
+            if curl -s http://localhost:5000/health; then
+              echo "API is up!"
+              break
+            else
+              echo "Waiting for API..."
+              sleep 5
+            fi
+          done
 
       - name: Run SonarQube Scanner (SAST)
         run: |
@@ -30,7 +39,8 @@ jobs:
 
       - name: Run ZAP scan (DAST)
         run: |
-          docker run --rm -v $(pwd):/zap/wrk/:rw owasp/zap2docker-stable zap-baseline.py -t http://host.docker.internal:5000
+          docker run --rm -v $(pwd):/zap/wrk/:rw zaproxy/zap-stable zap-baseline.py -t http://host.docker.internal:5000
+
       - name: Install Cypress dependencies
         run: npm install
 
