@@ -61,22 +61,36 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
           
-      # Build and run SAST with SonarQube
+      # Wait for SonarQube to be ready
+      - name: Wait for SonarQube
+        run: |
+          timeout 300 bash -c 'while [[ "$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9000/api/system/status)" != "200" ]]; do sleep 5; done'
+
+      # Create SonarQube admin token
+      - name: Create SonarQube Token
+        run: |
+          # Change default admin password
+          curl -X POST -u admin:admin "http://localhost:9000/api/users/change_password" -d "login=admin&previousPassword=admin&password=admin123"
+          # Generate token
+          echo "SONAR_TOKEN=$(curl -X POST -u admin:admin123 "http://localhost:9000/api/user_tokens/generate" -d "name=pipeline-token" | jq -r '.token')" >> $GITHUB_ENV
+
+      # Build and analyze with SonarQube
       - name: Build and analyze with SonarQube
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           dotnet sonarscanner begin \
             /k:"dotnet-crud-api" \
             /d:sonar.host.url="http://localhost:9000" \
-            /d:sonar.login="${{ secrets.SONAR_TOKEN }}" \
-            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
+            /d:sonar.login="${SONAR_TOKEN}" \
+            /d:sonar.cs.vstest.reportsPaths="**/*.trx" \
+            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+            /d:sonar.coverage.exclusions="**/Tests/**,**/Program.cs"
           
           dotnet build --no-restore
-          dotnet test --no-build --collect:"XPlat Code Coverage;Format=opencover"
+          dotnet test --no-build --logger:"trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage;Format=opencover"
           
-          dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+          dotnet sonarscanner end /d:sonar.login="${SONAR_TOKEN}"
           
       # Start .NET application
       - name: Start .NET Application
