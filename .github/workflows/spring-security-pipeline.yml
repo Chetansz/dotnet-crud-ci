@@ -49,26 +49,23 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
           
-      # SonarCloud Analysis
-      - name: SonarCloud Scan
+      # Local SonarQube Analysis
+      - name: SonarQube Scan
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           dotnet sonarscanner begin \
-            /k:"Chetansz_dotnet-crud-ci" \
-            /o:"chetansz" \
-            /d:sonar.host.url="https://sonarcloud.io" \
-            /d:sonar.login="$SONAR_TOKEN" \
+            /k:"dotnet-crud-api" \
+            /d:sonar.host.url="http://localhost:9000" \
+            /d:sonar.login="sqp_1ac9257926676f732e10586d62328caef0d39a37" \
             /d:sonar.cs.vstest.reportsPaths="**/*.trx" \
             /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
-            /d:sonar.coverage.exclusions="**/Tests/**,**/Program.cs" \
-            /d:sonar.projectName="dotnet-crud-ci"
+            /d:sonar.coverage.exclusions="**/Tests/**,**/Program.cs"
           
           dotnet build --no-restore
           dotnet test --no-build --logger:"trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage;Format=opencover"
           
-          dotnet sonarscanner end /d:sonar.login="$SONAR_TOKEN"
+          dotnet sonarscanner end /d:sonar.login="sqp_1ac9257926676f732e10586d62328caef0d39a37"
           
       # Start .NET application
       - name: Start .NET Application
