@@ -45,11 +45,11 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Add test coverage packages
-        working-directory: ./Tests
-        run: |
-          dotnet add package coverlet.msbuild
-          dotnet add package coverlet.collector
+      - name: Build Solution
+        run: dotnet build --configuration Release
+
+      - name: Run Tests with Coverage
+        run: dotnet test --configuration Release --no-build --collect:"XPlat Code Coverage"
           
       - name: Cache SonarQube packages
         uses: actions/cache@v4

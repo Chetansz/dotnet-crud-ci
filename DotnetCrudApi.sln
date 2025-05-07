@@ -1,9 +1,11 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35931.197 d17.13
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCrudApi", "DotnetCrudApi.csproj", "{CA69A62D-7DFD-6B26-D1FF-DF915804E54E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetCrudApi.Tests", "Tests\DotnetCrudApi.Tests.csproj", "{B5E77F3D-B7A9-4E1B-9B8C-8F5C7A2E9D6F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,6 +17,10 @@ Global
 		{CA69A62D-7DFD-6B26-D1FF-DF915804E54E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CA69A62D-7DFD-6B26-D1FF-DF915804E54E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CA69A62D-7DFD-6B26-D1FF-DF915804E54E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B5E77F3D-B7A9-4E1B-9B8C-8F5C7A2E9D6F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B5E77F3D-B7A9-4E1B-9B8C-8F5C7A2E9D6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B5E77F3D-B7A9-4E1B-9B8C-8F5C7A2E9D6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B5E77F3D-B7A9-4E1B-9B8C-8F5C7A2E9D6F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
