@@ -1,5 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using DotnetCrudApi.Models;
+using System.Collections.Concurrent;
 
 namespace DotnetCrudApi.Controllers
 {
@@ -7,43 +8,76 @@ namespace DotnetCrudApi.Controllers
     [ApiController]
     public class TodoController : ControllerBase
     {
-        private static List<TodoItem> todos = new();
+        private static readonly ConcurrentDictionary<long, TodoItem> _todos = new();
+        private static long _lastId = 0;
 
         [HttpGet]
-        public ActionResult<IEnumerable<TodoItem>> Get() => todos;
+        public ActionResult<IEnumerable<TodoItem>> Get() => Ok(_todos.Values);
 
         [HttpGet("{id}")]
         public ActionResult<TodoItem> Get(long id)
         {
-            var item = todos.FirstOrDefault(x => x.Id == id);
-            if (item == null) return NotFound();
-            return item;
+            if (_todos.TryGetValue(id, out var item))
+            {
+                return Ok(item);
+            }
+            return NotFound(new { message = $"Todo item with ID {id} not found" });
         }
 
         [HttpPost]
-        public ActionResult<TodoItem> Post(TodoItem item)
+        public ActionResult<TodoItem> Post([FromBody] TodoItem item)
         {
-            item.Id = todos.Count + 1;
-            todos.Add(item);
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            item.Id = Interlocked.Increment(ref _lastId);
+            
+            if (!_todos.TryAdd(item.Id, item))
+            {
+                return StatusCode(500, new { message = "Failed to create todo item" });
+            }
+
             return CreatedAtAction(nameof(Get), new { id = item.Id }, item);
         }
 
         [HttpPut("{id}")]
-        public IActionResult Put(long id, TodoItem item)
+        public IActionResult Put(long id, [FromBody] TodoItem item)
         {
-            var existing = todos.FirstOrDefault(x => x.Id == id);
-            if (existing == null) return NotFound();
-            existing.Name = item.Name;
-            existing.IsComplete = item.IsComplete;
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            if (!_todos.TryGetValue(id, out var existingItem))
+            {
+                return NotFound(new { message = $"Todo item with ID {id} not found" });
+            }
+
+            var updatedItem = new TodoItem
+            {
+                Id = id,
+                Name = item.Name,
+                IsComplete = item.IsComplete
+            };
+
+            if (!_todos.TryUpdate(id, updatedItem, existingItem))
+            {
+                return StatusCode(500, new { message = "Failed to update todo item" });
+            }
+
             return NoContent();
         }
 
         [HttpDelete("{id}")]
         public IActionResult Delete(long id)
         {
-            var item = todos.FirstOrDefault(x => x.Id == id);
-            if (item == null) return NotFound();
-            todos.Remove(item);
+            if (!_todos.TryRemove(id, out _))
+            {
+                return NotFound(new { message = $"Todo item with ID {id} not found" });
+            }
+
             return NoContent();
         }
     }

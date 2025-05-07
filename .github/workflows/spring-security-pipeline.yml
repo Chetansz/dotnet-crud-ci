@@ -1,0 +1,158 @@
+name: .NET Security Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  packages: read
+  actions: read
+  security-events: write
+
+jobs:
+  security-testing:
+    runs-on: ubuntu-latest
+    
+    services:
+      # SonarQube service container
+      sonarqube:
+        image: sonarqube:latest
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd="curl -f http://localhost:9000/api/system/status"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for SonarQube analysis
+          
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          
+      - name: Install SonarScanner
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Add test coverage packages
+        working-directory: ./Tests
+        run: |
+          dotnet add package coverlet.msbuild
+          dotnet add package coverlet.collector
+          
+      - name: Cache SonarQube packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+          
+      - name: Restore dependencies
+        run: dotnet restore
+          
+      # Build and run SAST with SonarQube
+      - name: Build and analyze with SonarQube
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          dotnet sonarscanner begin \
+            /k:"dotnet-crud-api" \
+            /d:sonar.host.url="http://localhost:9000" \
+            /d:sonar.login="${{ secrets.SONAR_TOKEN }}" \
+            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
+          
+          dotnet build --no-restore
+          dotnet test --no-build --collect:"XPlat Code Coverage;Format=opencover"
+          
+          dotnet sonarscanner end /d:sonar.login="${{ secrets.SONAR_TOKEN }}"
+          
+      # Start .NET application
+      - name: Start .NET Application
+        run: |
+          dotnet run --project DotnetCrudApi.csproj &
+          echo "Waiting for application to start..."
+          timeout 60 bash -c 'until curl -s http://localhost:5047/swagger/index.html; do sleep 5; done'
+          
+      # Run OWASP ZAP scan
+      - name: ZAP Scan
+        run: |
+          mkdir -p zap-reports
+          docker run --network host \
+            -v $(pwd)/zap-reports:/zap/wrk/:rw \
+            --user root \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://localhost:5047 \
+            -g gen.conf \
+            -r zap-report.html \
+            -I
+            
+      # Install and run Newman for Postman tests
+      - name: Install Newman
+        run: |
+          npm install -g newman
+          npm install -g newman-reporter-htmlextra
+          
+      - name: Run Postman Collection
+        run: |
+          mkdir -p newman-reports
+          newman run ./Tests/Postman/TodoApi.postman_collection.json \
+            --reporters cli,htmlextra \
+            --reporter-htmlextra-export newman-reports/report.html
+            
+      # Generate consolidated report
+      - name: Generate Consolidated Report
+        run: |
+          mkdir -p test-reports
+          echo "# Security and Testing Report" > test-reports/consolidated-report.md
+          echo "## SAST Results" >> test-reports/consolidated-report.md
+          cat .sonarqube/out/*/Issues.json >> test-reports/consolidated-report.md || true
+          echo "## DAST Results" >> test-reports/consolidated-report.md
+          cat zap-reports/zap-report.html >> test-reports/consolidated-report.md || true
+          echo "## Functional Test Results" >> test-reports/consolidated-report.md
+          cat newman-reports/report.html >> test-reports/consolidated-report.md || true
+          
+      # Upload test reports as artifacts
+      - name: Upload Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-test-reports
+          path: |
+            test-reports/
+            zap-reports/
+            newman-reports/
+            .sonarqube/
+            **/coverage.opencover.xml
+          retention-days: 5
+            
+      # Stop .NET application
+      - name: Stop .NET Application
+        if: always()
+        run: |
+          pkill -f 'dotnet run' || true
+          
+      # Check for vulnerabilities and fail if found
+      - name: Check for Vulnerabilities
+        run: |
+          if grep -q "High" zap-reports/zap-report.html; then
+            echo "High severity vulnerabilities found in ZAP scan"
+            exit 1
+          fi
+          if [ -f .sonarqube/out/*/Issues.json ]; then
+            if grep -q '"severity":"CRITICAL"' .sonarqube/out/*/Issues.json; then
+              echo "Critical issues found in SonarQube analysis"
+              exit 1
+            fi
+          fi

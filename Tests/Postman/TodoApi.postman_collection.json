@@ -1,0 +1,63 @@
+{
+  "info": {
+    "name": "Todo API Tests",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Get All Todos",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:5047/api/todo"
+      }
+    },
+    {
+      "name": "Create Todo",
+      "request": {
+        "method": "POST",
+        "url": "http://localhost:5047/api/todo",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Test Todo\",\n  \"isComplete\": false\n}"
+        }
+      }
+    },
+    {
+      "name": "Get Todo by Id",
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:5047/api/todo/1"
+      }
+    },
+    {
+      "name": "Update Todo",
+      "request": {
+        "method": "PUT",
+        "url": "http://localhost:5047/api/todo/1",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Updated Todo\",\n  \"isComplete\": true\n}"
+        }
+      }
+    },
+    {
+      "name": "Delete Todo",
+      "request": {
+        "method": "DELETE",
+        "url": "http://localhost:5047/api/todo/1"
+      }
+    }
+  ]
+}

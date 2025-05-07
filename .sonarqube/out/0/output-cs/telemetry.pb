@@ -1,0 +1,1 @@
+GR1C:\Users\cheta\DotnetCrudApi\DotnetCrudApi.csproj¢net8.0òCSharp12
