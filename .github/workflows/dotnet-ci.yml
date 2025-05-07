@@ -39,9 +39,15 @@ jobs:
         with:
           dotnet-version: '8.0.x'
           
-      - name: Install SonarScanner and tools
+      - name: Install SonarScanner
+        run: dotnet tool install --global dotnet-sonarscanner
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Add test coverage packages
+        working-directory: ./Tests
         run: |
-          dotnet tool install --global dotnet-sonarscanner
           dotnet add package coverlet.msbuild
           dotnet add package coverlet.collector
           
